@@ -1,17 +1,25 @@
 
 #include "AsyncActions/AsyncActionBase_PushSoftWidget.h"
+#include "Subsystems/FrontendUISubsystem.h"
+#include "Widgets/Widget_ActivatableBase.h"
 
 UAsyncActionBase_PushSoftWidget* UAsyncActionBase_PushSoftWidget::PushSoftWidget(const UObject* WorldContextObject,
 	APlayerController* OwningPlayerController, TSoftClassPtr<UWidget_ActivatableBase> InSoftWidgetClass,
 	UPARAM(meta = (Categories = "Frontend.WidgetStack"))FGameplayTag InWidgetStackTag, bool bFocusOnNewlyPushedWidget)
 {
-	checkf(InSoftWidgetClass.IsNull(),TEXT("PushSoftWidgetToStack was passed a null soft widget class"));
+	checkf(!InSoftWidgetClass.IsNull(),TEXT("PushSoftWidgetToStack was passed a null soft widget class"));
 
 	if (GEngine)
 	{
 		if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
 		{
 			UAsyncActionBase_PushSoftWidget* Node = NewObject<UAsyncActionBase_PushSoftWidget>();
+			Node->CachedOwningWorld = World;
+			Node->CachedOwningPC = OwningPlayerController;
+			Node->CachedSoftWidgetClass = InSoftWidgetClass;
+			Node->CachedWidgetStackTag = InWidgetStackTag;
+			Node->bCachedFocusOnNewlyPushedWidget = bFocusOnNewlyPushedWidget;
+			
 			Node->RegisterWithGameInstance(World);
 
 			return Node;
@@ -19,4 +27,37 @@ UAsyncActionBase_PushSoftWidget* UAsyncActionBase_PushSoftWidget::PushSoftWidget
 	}
 	
 	return nullptr;
+}
+
+void UAsyncActionBase_PushSoftWidget::Activate()
+{
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(CachedOwningWorld.Get());
+	FrontendUISubsystem->PushSoftWidgetToStackAsync(CachedWidgetStackTag,CachedSoftWidgetClass,
+		[this](EAsyncPushWidgetState InPushState, UWidget_ActivatableBase* PushedWidget)
+		{
+			switch (InPushState)
+			{
+				case EAsyncPushWidgetState::OnCreatedBeforePush:
+					{
+						PushedWidget->SetOwningPlayer(CachedOwningPC.Get());
+						OnWidgetCreatedBeforePush.Broadcast(PushedWidget);
+					}
+				break;
+				case EAsyncPushWidgetState::AfterPush:
+					{
+						AfterPush.Broadcast(PushedWidget);
+						if ( bCachedFocusOnNewlyPushedWidget)
+						{
+							if (UWidget* WidgetToFocus = PushedWidget->GetDesiredFocusTarget())
+							{
+								WidgetToFocus->SetFocus();
+							}
+						}
+
+						SetReadyToDestroy();
+					}
+				break;
+			}	
+		}
+		);	
 }

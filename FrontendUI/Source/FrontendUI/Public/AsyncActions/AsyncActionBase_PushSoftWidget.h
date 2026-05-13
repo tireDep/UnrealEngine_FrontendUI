@@ -22,9 +22,20 @@ public:
 		UPARAM(meta = (Categories = "Frontend.WidgetStack")) FGameplayTag InWidgetStackTag,
 		bool bFocusOnNewlyPushedWidget = true);
 
+	// >> Begin UBlueprintAsyncActionBase Interface
+	virtual void Activate() override;
+	// << end UBlueprintAsyncActionBase Interface
+
 	UPROPERTY(BlueprintAssignable)
 	FOnPushSoftWidgetDelegate OnWidgetCreatedBeforePush;
 
 	UPROPERTY(BlueprintAssignable)
 	FOnPushSoftWidgetDelegate AfterPush;
+
+private:
+	TWeakObjectPtr<UWorld> CachedOwningWorld;
+	TWeakObjectPtr<APlayerController> CachedOwningPC;
+	TSoftClassPtr<UWidget_ActivatableBase> CachedSoftWidgetClass;
+	FGameplayTag CachedWidgetStackTag;
+	bool bCachedFocusOnNewlyPushedWidget = false;
 };
